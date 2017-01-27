@@ -1,0 +1,122 @@
+<?php
+/**This module allows Drupal 8 to set node creation limit for particular users
+ * @File
+ *  Node Limit module for Drupal 8
+ * "@author The Brihaspati Infotech Pvt. Ltd.
+ *  <http://www.brihaspatitech.com/>"
+ * * @category Node_Limit_module_for_Drupal 8
+ *   @package Node_Limit_module_for_Drupal 8
+ */
+use Drupal\Core\Breadcrumb\Breadcrumb;
+use Drupal\Core\Cache\CacheableMetadata;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Block\BlockPluginInterface;
+use Drupal\Core\Link;
+use Drupal\Core\Menu\MenuLinkInterface;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Render\Element;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\menu_link_content\Entity\MenuLinkContent;
+use Drupal\node\NodeTypeInterface;
+use Drupal\system\Entity\Menu;
+use Drupal\node\NodeInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Drupal\Core\Form;
+use Drupal\Core\Form\FormErrorInterface;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Drupal\Core\Database\Connection;
+
+function Node_Limit_Form_Node_Type_Form_alter(&$form, FormStateInterface $form_state)
+{
+
+    $type = $form_state->getFormObject()->getEntity();
+    $form['node_limit'] = array(
+    '#type' => 'details',
+    '#title' => t('Node Limit '),
+    '#group' => 'additional_settings',
+    );
+    $form['node_limit']['node_limit_options'] = array(
+    '#type' => 'select',
+    '#title' => t('Limit the node creation'),
+    '#default_value' =>  
+    $type->getThirdPartySetting('node_limit', 'node_limit_value', $default = null),
+    '#options' => 
+    array(0 => 'Disable',
+    1 => 1,2 => 2,3 => 3,4 => 4,5 => 5,6 => 6,7 => 7,8 => 8,9 => 9,10 => 10),
+    '#description' => 
+    t('The Number of content node created, Set Disable for no limit'),
+    );
+    $form['#entity_builders'][] = 'node_limit_form_node_type_form_builder';
+}
+
+/*
+ * Entity builder for the node type form with node limit options.
+ * Save the ThirdPartySetting.
+ * 
+ * @see    node_limit_form_node_type_form_alter().
+ * @return @see
+ */
+function Node_Limit_Form_Node_Type_Form_builder(
+    $entity_type, NodeTypeInterface $type, &$form, FormStateInterface $form_state
+) {
+    $type->setThirdPartySetting(
+        'node_limit', 'node_limit_value', 
+        $form_state->getValue('node_limit_options')
+    );  
+}
+
+/**@form    Description of form items.
+ * @$form_state     Detail Description of form items.
+ * Implementing hook_form_node_form_alter  for custom custom validation function
+ * Return validation for all content type forms
+ */
+function Node_Limit_Form_Node_Form_alter(&$form, 
+    FormStateInterface $form_state,$form_id
+) {
+    /* 
+        *  Fetch the table prefix from connection object
+        */
+        $connection = \Drupal\Core\Database\Database::getConnection();
+        $obj_array = (array) $connection;
+        $prefix = $obj_array["\0*\0" . 'prefixes']['default'];
+
+         $entity = $form_state->getFormObject()->getEntity();
+         $node_type = $entity->type->entity;
+         /* 
+           *  Fetching the ThirdPartySetting node_limit value.
+           */
+         $node_creation_limit = $node_type->
+         getThirdPartySetting('node_limit', 'node_limit_value', $default = null);
+         $content_type = $entity->getType();
+         /* 
+           *  cheeking number of already created nodes by current user.
+           */
+         $user = \Drupal\user\Entity\User::load(\Drupal::currentUser()->id());
+         $uid= $user->get('uid')->value;
+         
+         /* 
+           *  Query to database for checking total no of already created node.
+           */
+        $table_name = "$prefix".""."node_field_data";
+        $total_created_node 
+            = db_query(
+                "SELECT count(*) FROM  
+         `$table_name` WHERE `type` = '$content_type' and 
+         `status` = '1' and `uid` = '$uid'"
+            )
+                ->fetchField();
+         /*
+           *   checking the node is new
+           */
+        if ($entity->isNew()) {
+            /*
+            *   $node_creation_limit == 0 (disapble) means no limit
+            */
+            if ($node_creation_limit != '0') {
+                if ($total_created_node < $node_creation_limit) {
+                } else {
+                    throw new AccessDeniedHttpException();
+                }
+            }
+        }
+}

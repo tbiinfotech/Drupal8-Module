@@ -1,0 +1,5 @@
+name: Node Limit
+type: module
+description: 'A module for Administrator for setting node creation limit'
+package: custom modules
+core: 8.x
